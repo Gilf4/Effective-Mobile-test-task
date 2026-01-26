@@ -6,8 +6,14 @@
 
 Goose — инструмент для управления миграциями базы данных.
 
+**Через Go:**
 ```bash
 go install github.com/pressly/goose/v3/cmd/goose@latest
+```
+
+**Через Homebrew (macOS):**
+```bash
+brew install goose
 ```
 
 ### 2. Заполнение .env файла
