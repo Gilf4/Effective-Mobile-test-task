@@ -4,7 +4,10 @@ GOOSE_DSN := "postgres://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAM
 
 MIGRATIONS_DIR := migrations
 
-.PHONY: migrate-up migrate-down
+.PHONY: migrate-up migrate-down run
+
+run:
+	-@CONFIG_PATH=./.env go run ./cmd
 
 migrate-up:
 	@goose -dir ${MIGRATIONS_DIR} postgres ${GOOSE_DSN} up
