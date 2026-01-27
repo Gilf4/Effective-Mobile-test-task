@@ -2,7 +2,10 @@ module github.com/Gilf4/effective-mobile-task
 
 go 1.25.4
 
-require github.com/ilyakaznacheev/cleanenv v1.5.0
+require (
+	github.com/google/uuid v1.6.0
+	github.com/ilyakaznacheev/cleanenv v1.5.0
+)
 
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect

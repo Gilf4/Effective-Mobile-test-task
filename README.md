@@ -27,6 +27,9 @@ cp .env.example .env
 Откройте `.env` и при необходимости измените переменные окружения:
 
 ```env
+#APP
+APP_ENV=local
+
 # PostgreSQL
 DB_USER=admin
 DB_PASSWORD=admin
@@ -36,6 +39,8 @@ DB_PORT=5432
 
 # Server
 SERVER_PORT=8080
+READ_TIMEOUT=5s
+WRITE_TIMEOUT=5s
 ```
 
 ### 3. Запуск базы данных:
