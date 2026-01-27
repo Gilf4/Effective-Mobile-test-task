@@ -16,6 +16,12 @@ go install github.com/pressly/goose/v3/cmd/goose@latest
 brew install goose
 ```
 
+После установки убедитесь, что goose доступен в PATH:
+
+```bash
+goose --version
+```
+
 ### 2. Заполнение .env файла
 
 Создайте файл `.env` на основе примера:
