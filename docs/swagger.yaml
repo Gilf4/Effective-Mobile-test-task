@@ -2,6 +2,8 @@ basePath: /
 definitions:
   models.CreateSubscriptionRequest:
     properties:
+      end_date:
+        type: string
       price:
         type: integer
       service_name:
@@ -81,6 +83,8 @@ paths:
     post:
       consumes:
       - application/json
+      description: Создание новой подписки. Поле `end_date` опциональное. Если не
+        указано - подписка бессрочная.
       parameters:
       - description: Subscription info
         in: body
@@ -164,13 +168,15 @@ paths:
     put:
       consumes:
       - application/json
+      description: Обновление данных подписки. Все поля опциональные. При обновлении
+        `end_date` проверяется, что `end_date >= start_date`.
       parameters:
       - description: Subscription ID
         in: path
         name: id
         required: true
         type: string
-      - description: Subscription update info
+      - description: Subscription update info (all fields optional)
         in: body
         name: input
         required: true
@@ -200,6 +206,12 @@ paths:
       - subscriptions
   /subscriptions/total:
     get:
+      description: |-
+        Расчёт общей стоимости активных подписок за указанный период.<br><br>
+        **Логика расчёта:**<br>
+        - Подписка с `end_date` учитывается, если пересекается с запрошенным периодом (start_date <= end_period AND end_date >= start_period)<br>
+        - Подписка без `end_date` (бессрочная) учитывается полностью, если её `start_date <= end_period`<br>
+        - Бессрочная подписка всегда учитывается полной стоимостью, независимо от длины запрошенного периода
       parameters:
       - description: User UUID
         in: query

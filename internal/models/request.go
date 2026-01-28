@@ -18,6 +18,7 @@ type CreateSubscriptionRequest struct {
 	Price       int       `json:"price"`
 	UserID      uuid.UUID `json:"user_id"`
 	StartDate   string    `json:"start_date"`
+	EndDate     *string   `json:"end_date"`
 }
 
 func (r CreateSubscriptionRequest) Validate() error {

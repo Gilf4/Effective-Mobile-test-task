@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Gilf4/effective-mobile-task/internal/config"
+	apperrors "github.com/Gilf4/effective-mobile-task/internal/errors"
 	"github.com/Gilf4/effective-mobile-task/internal/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -50,7 +51,7 @@ func (s *SubscriptionStorage) Create(ctx context.Context, sub *models.Subscripti
 	).Scan(&sub.ID, &sub.CreatedAt, &sub.UpdatedAt)
 
 	if err != nil {
-		return fmt.Errorf("failed to create subscription: %w", err)
+		return apperrors.NewInternal(err)
 	}
 
 	return nil
@@ -78,9 +79,9 @@ func (s *SubscriptionStorage) GetByID(ctx context.Context, id uuid.UUID) (*model
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrSubscriptionNotFound
+			return nil, apperrors.NewNotFound("subscription not found", err)
 		}
-		return nil, fmt.Errorf("failed to get subscription: %w", err)
+		return nil, apperrors.NewInternal(err)
 	}
 
 	return &sub, nil
@@ -103,11 +104,11 @@ func (s *SubscriptionStorage) Update(ctx context.Context, sub *models.Subscripti
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to update subscription: %w", err)
+		return apperrors.NewInternal(err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return ErrSubscriptionNotFound
+		return apperrors.NewNotFound("subscription not found", nil)
 	}
 
 	return nil
@@ -119,17 +120,17 @@ func (s *SubscriptionStorage) Delete(ctx context.Context, id uuid.UUID) error {
 
 	cmdTag, err := s.db.Exec(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("failed to delete subscription: %w", err)
+		return apperrors.NewInternal(err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return ErrSubscriptionNotFound
+		return apperrors.NewNotFound("subscription not found", nil)
 	}
 
 	return nil
 }
 
-// ListByUserID возвращает список активных подписок пользователя
+// ListByUserID возвращает список подписок пользователя
 func (s *SubscriptionStorage) ListByUserID(ctx context.Context, userID uuid.UUID) ([]models.Subscription, error) {
 	query := `
 		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
@@ -140,7 +141,7 @@ func (s *SubscriptionStorage) ListByUserID(ctx context.Context, userID uuid.UUID
 
 	rows, err := s.db.Query(ctx, query, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+		return nil, apperrors.NewInternal(err)
 	}
 	defer rows.Close()
 
@@ -158,13 +159,13 @@ func (s *SubscriptionStorage) ListByUserID(ctx context.Context, userID uuid.UUID
 			&sub.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan subscription: %w", err)
+			return nil, apperrors.NewInternal(err)
 		}
 		subscriptions = append(subscriptions, sub)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, apperrors.NewInternal(err)
 	}
 
 	return subscriptions, nil
@@ -194,7 +195,7 @@ func (s *SubscriptionStorage) List(ctx context.Context, userID *uuid.UUID) ([]mo
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+		return nil, apperrors.NewInternal(err)
 	}
 	defer rows.Close()
 
@@ -212,27 +213,31 @@ func (s *SubscriptionStorage) List(ctx context.Context, userID *uuid.UUID) ([]mo
 			&sub.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan subscription: %w", err)
+			return nil, apperrors.NewInternal(err)
 		}
 		subscriptions = append(subscriptions, sub)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, apperrors.NewInternal(err)
 	}
 
 	return subscriptions, nil
 }
 
-// GetTotalCost считает сумму стоимсоти подписок за период
+// GetTotalCost считает сумму стоимости подписок за период
 // Параметр serviceName опциональный
+// Вариант A: бессрочные подписки (без end_date) учитываются полностью, если активны в запрошенном периоде
 func (r *SubscriptionStorage) GetTotalCost(ctx context.Context, userID uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error) {
 	query := `
 		SELECT SUM(price) as total
 		FROM subscriptions
 		WHERE user_id = $1
 		  AND start_date <= $3
-		  AND (end_date IS NULL OR end_date >= $2)
+		  AND (
+		    end_date IS NULL 
+		    OR end_date >= $2
+		  )
 	`
 
 	args := []any{userID, startPeriod, endPeriod}
@@ -247,11 +252,11 @@ func (r *SubscriptionStorage) GetTotalCost(ctx context.Context, userID uuid.UUID
 	var total *int
 	err := r.db.QueryRow(ctx, query, args...).Scan(&total)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get total cost: %w", err)
+		return 0, apperrors.NewInternal(err)
 	}
 
 	if total == nil {
-		return 0, ErrNoSubscriptionsFound
+		return 0, apperrors.NewNotFound("no subscriptions found for the specified criteria", nil)
 	}
 
 	return *total, nil

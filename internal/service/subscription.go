@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	apperrors "github.com/Gilf4/effective-mobile-task/internal/errors"
 	"github.com/Gilf4/effective-mobile-task/internal/models"
 	"github.com/google/uuid"
 )
@@ -28,12 +29,12 @@ func NewSubscriptionService(repo SubscriptionRepository) *SubscriptionService {
 
 func (s *SubscriptionService) CreateSubscription(ctx context.Context, req models.CreateSubscriptionRequest) (*models.SubscriptionResponse, error) {
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("validation failed: %w", err)
+		return nil, apperrors.NewBadRequest(err.Error(), err)
 	}
 
 	startDate, err := parseDate(req.StartDate)
 	if err != nil {
-		return nil, fmt.Errorf("invalid start_date: %w", err)
+		return nil, apperrors.NewBadRequest("invalid start_date format", err)
 	}
 
 	sub := &models.Subscription{
@@ -43,8 +44,19 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, req models
 		StartDate:   startDate,
 	}
 
+	if req.EndDate != nil {
+		endDate, err := parseDate(*req.EndDate)
+		if err != nil {
+			return nil, apperrors.NewBadRequest("invalid end_date format", err)
+		}
+		if endDate.Before(startDate) {
+			return nil, apperrors.NewBadRequest("end_date must be greater than or equal to start_date", nil)
+		}
+		sub.EndDate = &endDate
+	}
+
 	if err := s.repo.Create(ctx, sub); err != nil {
-		return nil, fmt.Errorf("failed to create subscription: %w", err)
+		return nil, err
 	}
 
 	return models.NewSubscriptionResponse(sub), nil
@@ -53,7 +65,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, req models
 func (s *SubscriptionService) GetSubscription(ctx context.Context, id uuid.UUID) (*models.SubscriptionResponse, error) {
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get subscription: %w", err)
+		return nil, err
 	}
 
 	return models.NewSubscriptionResponse(sub), nil
@@ -61,12 +73,12 @@ func (s *SubscriptionService) GetSubscription(ctx context.Context, id uuid.UUID)
 
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, id uuid.UUID, req models.UpdateSubscriptionRequest) (*models.SubscriptionResponse, error) {
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("validation failed: %w", err)
+		return nil, apperrors.NewBadRequest(err.Error(), err)
 	}
 
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get subscription: %w", err)
+		return nil, err
 	}
 
 	if req.ServiceName != nil {
@@ -78,20 +90,20 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, id uuid.UU
 	if req.StartDate != nil {
 		date, err := parseDate(*req.StartDate)
 		if err != nil {
-			return nil, fmt.Errorf("invalid start_date: %w", err)
+			return nil, apperrors.NewBadRequest("invalid date format", err)
 		}
 		sub.StartDate = date
 	}
 	if req.EndDate != nil {
 		date, err := parseDate(*req.EndDate)
 		if err != nil {
-			return nil, fmt.Errorf("invalid end_date: %w", err)
+			return nil, apperrors.NewBadRequest("invalid date format", err)
 		}
 		sub.EndDate = &date
 	}
 
 	if err := s.repo.Update(ctx, sub); err != nil {
-		return nil, fmt.Errorf("failed to update subscription: %w", err)
+		return nil, err
 	}
 
 	return models.NewSubscriptionResponse(sub), nil
@@ -118,16 +130,16 @@ func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID *uui
 func (s *SubscriptionService) CalculateTotal(ctx context.Context, userID uuid.UUID, serviceName string, startStr, endStr string) (int, error) {
 	start, err := parseDate(startStr)
 	if err != nil {
-		return 0, fmt.Errorf("invalid start_date: %w", err)
+		return 0, apperrors.NewBadRequest("invalid start_date format", err)
 	}
 	end, err := parseDate(endStr)
 	if err != nil {
-		return 0, fmt.Errorf("invalid end_date: %w", err)
+		return 0, apperrors.NewBadRequest("invalid end_date format", err)
 	}
 
 	total, err := s.repo.GetTotalCost(ctx, userID, serviceName, start, end)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get total cost: %w", err)
+		return 0, err
 	}
 
 	return total, nil

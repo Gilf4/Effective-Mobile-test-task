@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	apperrors "github.com/Gilf4/effective-mobile-task/internal/errors"
 	"github.com/Gilf4/effective-mobile-task/internal/models"
-	"github.com/Gilf4/effective-mobile-task/internal/repository/db"
 	"github.com/google/uuid"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -31,6 +31,22 @@ func NewHandler(service SubscriptionService, log *slog.Logger) *Handler {
 	return &Handler{service: service, log: log}
 }
 
+func (h *Handler) handleError(w http.ResponseWriter, err error) {
+	var appErr *apperrors.AppError
+	if errors.As(err, &appErr) {
+		h.log.Error("application error", "error", appErr.Err, "code", appErr.Code, "message", appErr.Message)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(appErr.Code)
+		json.NewEncoder(w).Encode(map[string]string{"error": appErr.Message})
+		return
+	}
+
+	h.log.Error("unexpected error", "error", err)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	json.NewEncoder(w).Encode(map[string]string{"error": "Internal server error"})
+}
+
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /subscriptions", h.CreateSubscription)
 	mux.HandleFunc("GET /subscriptions", h.ListSubscriptions)
@@ -43,6 +59,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // @Summary Создать подписку
+// @Description Создание новой подписки. Поле `end_date` опциональное. Если не указано - подписка бессрочная.
 // @Tags subscriptions
 // @Accept json
 // @Produce json
@@ -55,8 +72,7 @@ func (h *Handler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateSubscriptionRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Error("invalid request body", "error", err)
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		h.handleError(w, apperrors.NewBadRequest("invalid request body", err))
 		return
 	}
 
@@ -67,8 +83,7 @@ func (h *Handler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 
 	sub, err := h.service.CreateSubscription(r.Context(), req)
 	if err != nil {
-		h.log.Error("failed to create subscription", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.handleError(w, err)
 		return
 	}
 
@@ -90,8 +105,7 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		h.log.Error("invalid id format", "error", err)
-		http.Error(w, "invalid id format", http.StatusBadRequest)
+		h.handleError(w, apperrors.NewBadRequest("invalid id format", err))
 		return
 	}
 
@@ -99,14 +113,7 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 
 	sub, err := h.service.GetSubscription(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, db.ErrSubscriptionNotFound) {
-			h.log.Warn("subscription not found", "id", id)
-			http.Error(w, "subscription not found", http.StatusNotFound)
-			return
-		}
-
-		h.log.Error("failed to get subscription", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.handleError(w, err)
 		return
 	}
 
@@ -115,11 +122,12 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary Обновить подписку
+// @Description Обновление данных подписки. Все поля опциональные. При обновлении `end_date` проверяется, что `end_date >= start_date`.
 // @Tags subscriptions
 // @Accept json
 // @Produce json
 // @Param id path string true "Subscription ID"
-// @Param input body models.UpdateSubscriptionRequest true "Subscription update info"
+// @Param input body models.UpdateSubscriptionRequest true "Subscription update info (all fields optional)"
 // @Success 200 {object} models.SubscriptionResponse
 // @Failure 400 {string} string "Invalid request"
 // @Failure 404 {string} string "Subscription not found"
@@ -129,15 +137,13 @@ func (h *Handler) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		h.log.Error("invalid id format", "error", err)
-		http.Error(w, "invalid id format", http.StatusBadRequest)
+		h.handleError(w, apperrors.NewBadRequest("invalid id format", err))
 		return
 	}
 
 	var req models.UpdateSubscriptionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Error("invalid request body", "error", err)
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		h.handleError(w, apperrors.NewBadRequest("invalid request body", err))
 		return
 	}
 
@@ -145,14 +151,7 @@ func (h *Handler) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
 
 	sub, err := h.service.UpdateSubscription(r.Context(), id, req)
 	if err != nil {
-		if errors.Is(err, db.ErrSubscriptionNotFound) {
-			h.log.Warn("subscription not found", "id", id)
-			http.Error(w, "subscription not found", http.StatusNotFound)
-			return
-		}
-
-		h.log.Error("failed to update subscription", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.handleError(w, err)
 		return
 	}
 
@@ -172,8 +171,7 @@ func (h *Handler) DeleteSubscription(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		h.log.Error("invalid id format", "error", err)
-		http.Error(w, "invalid id format", http.StatusBadRequest)
+		h.handleError(w, apperrors.NewBadRequest("invalid id format", err))
 		return
 	}
 
@@ -181,14 +179,7 @@ func (h *Handler) DeleteSubscription(w http.ResponseWriter, r *http.Request) {
 
 	err = h.service.DeleteSubscription(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, db.ErrSubscriptionNotFound) {
-			h.log.Warn("subscription not found", "id", id)
-			http.Error(w, "subscription not found", http.StatusNotFound)
-			return
-		}
-
-		h.log.Error("failed to delete subscription", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.handleError(w, err)
 		return
 	}
 
@@ -210,8 +201,7 @@ func (h *Handler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	if userIDStr != "" {
 		parsedID, err := uuid.Parse(userIDStr)
 		if err != nil {
-			h.log.Error("invalid user_id format", "error", err)
-			http.Error(w, "invalid user_id format", http.StatusBadRequest)
+			h.handleError(w, apperrors.NewBadRequest("invalid user_id format", err))
 			return
 		}
 		userID = &parsedID
@@ -221,8 +211,7 @@ func (h *Handler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 
 	subs, err := h.service.ListSubscriptions(r.Context(), userID)
 	if err != nil {
-		h.log.Error("failed to list subscriptions", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		h.handleError(w, err)
 		return
 	}
 
@@ -231,6 +220,11 @@ func (h *Handler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary Получение общей стоимости подписок за заданный период
+// @Description Расчёт общей стоимости активных подписок за указанный период.<br><br>
+// @Description **Логика расчёта:**<br>
+// @Description - Подписка с `end_date` учитывается, если пересекается с запрошенным периодом (start_date <= end_period AND end_date >= start_period)<br>
+// @Description - Подписка без `end_date` (бессрочная) учитывается полностью, если её `start_date <= end_period`<br>
+// @Description - Бессрочная подписка всегда учитывается полной стоимостью, независимо от длины запрошенного периода
 // @Tags subscriptions
 // @Produce json
 // @Param user_id query string true "User UUID"
@@ -250,14 +244,12 @@ func (h *Handler) GetTotalCost(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		h.log.Error("invalid user_id format", "error", err)
-		http.Error(w, "invalid user_id format", http.StatusBadRequest)
+		h.handleError(w, apperrors.NewBadRequest("invalid user_id format", err))
 		return
 	}
 
 	if startDate == "" || endDate == "" {
-		h.log.Error("missing required parameters", "start_date", startDate, "end_date", endDate)
-		http.Error(w, "start_date and end_date are required", http.StatusBadRequest)
+		h.handleError(w, apperrors.NewBadRequest("start_date and end_date are required", nil))
 		return
 	}
 
@@ -270,15 +262,7 @@ func (h *Handler) GetTotalCost(w http.ResponseWriter, r *http.Request) {
 
 	total, err := h.service.CalculateTotal(r.Context(), userID, serviceName, startDate, endDate)
 	if err != nil {
-		// TODO: refactor: api layer has access to storage layer by db.errors
-		if errors.Is(err, db.ErrNoSubscriptionsFound) {
-			h.log.Warn("subscriptions not found", "user_id", userID)
-			http.Error(w, "No subscriptions found for the specified criteria", http.StatusNotFound)
-			return
-		}
-
-		h.log.Error("failed to calculate total cost", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		h.handleError(w, err)
 		return
 	}
 

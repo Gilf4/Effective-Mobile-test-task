@@ -57,6 +57,7 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "description": "Создание новой подписки. Поле ` + "`" + `end_date` + "`" + ` опциональное. Если не указано - подписка бессрочная.",
                 "consumes": [
                     "application/json"
                 ],
@@ -102,6 +103,7 @@ const docTemplate = `{
         },
         "/subscriptions/total": {
             "get": {
+                "description": "Расчёт общей стоимости активных подписок за указанный период.\u003cbr\u003e\u003cbr\u003e\n**Логика расчёта:**\u003cbr\u003e\n- Подписка с ` + "`" + `end_date` + "`" + ` учитывается, если пересекается с запрошенным периодом (start_date \u003c= end_period AND end_date \u003e= start_period)\u003cbr\u003e\n- Подписка без ` + "`" + `end_date` + "`" + ` (бессрочная) учитывается полностью, если её ` + "`" + `start_date \u003c= end_period` + "`" + `\u003cbr\u003e\n- Бессрочная подписка всегда учитывается полной стоимостью, независимо от длины запрошенного периода",
                 "produces": [
                     "application/json"
                 ],
@@ -212,6 +214,7 @@ const docTemplate = `{
                 }
             },
             "put": {
+                "description": "Обновление данных подписки. Все поля опциональные. При обновлении ` + "`" + `end_date` + "`" + ` проверяется, что ` + "`" + `end_date \u003e= start_date` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -231,7 +234,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Subscription update info",
+                        "description": "Subscription update info (all fields optional)",
                         "name": "input",
                         "in": "body",
                         "required": true,
@@ -311,6 +314,9 @@ const docTemplate = `{
         "models.CreateSubscriptionRequest": {
             "type": "object",
             "properties": {
+                "end_date": {
+                    "type": "string"
+                },
                 "price": {
                     "type": "integer"
                 },
