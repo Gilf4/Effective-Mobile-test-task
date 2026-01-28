@@ -1,28 +1,6 @@
 # Effective Mobile Task
 
-## Установка и настройка проекта
-
-### 1. Установка goose
-
-Goose — инструмент для управления миграциями базы данных.
-
-**Через Go:**
-```bash
-go install github.com/pressly/goose/v3/cmd/goose@latest
-```
-
-**Через Homebrew (macOS):**
-```bash
-brew install goose
-```
-
-После установки убедитесь, что goose доступен в PATH:
-
-```bash
-goose --version
-```
-
-### 2. Заполнение .env файла
+## Настройка окружения
 
 Создайте файл `.env` на основе примера:
 
@@ -49,19 +27,60 @@ READ_TIMEOUT=5s
 WRITE_TIMEOUT=5s
 ```
 
-### 3. Запуск базы данных:
+## Docker Compose
 
 ```bash
-docker-compose up -d
+docker compose up
 ```
 
-### 4. Применение миграций
+Приложение будет доступно по адресу: `http://localhost:8080`
 
-Примените миграции к базе данных:
+Swagger документация по адрессу: `http://localhost:8080/swagger`
+
+## Способ 2: Локальная разработка
+
+### 1. Установка goose
+
+Goose — инструмент для управления миграциями базы данных.
+
+**Через Go:**
+```bash
+go install github.com/pressly/goose/v3/cmd/goose@latest
+```
+
+**Через Homebrew (macOS):**
+```bash
+brew install goose
+```
+
+### 2. Запуск базы данных
+
+```bash
+docker compose up -d db
+```
+
+### 3. Применение миграций
 
 ```bash
 make migrate-up
 ```
+
+### 4. Запуск приложения
+
+```bash
+make run
+```
+
+Приложение будет доступно по адресу: `http://localhost:8080`
+
+## Доступ к API
+
+API документация (Swagger) доступна по адресу:
+`http://localhost:8080/swagger/index.html`
+
+## Команда для работы с генерацией swagger документации
+
+- `make swag`
 
 ## Команды для работы с миграциями
 
