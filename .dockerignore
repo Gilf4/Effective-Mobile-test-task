@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.env.local
+.env.dev
+.env.prod
+README.md
+Makefile
+docker-compose.yaml
+Dockerfile
+.vscode
+.idea
+*.md

@@ -1,4 +1,25 @@
 services:
+  app:
+    build: .
+    ports:
+      - "${SERVER_PORT}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - CONFIG_PATH=/app/.env
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - SERVER_PORT=${SERVER_PORT}
+      - APP_ENV=${APP_ENV}
+      - READ_TIMEOUT=${READ_TIMEOUT}
+      - WRITE_TIMEOUT=${WRITE_TIMEOUT}
+    volumes:
+      - ./migrations:/app/migrations
+      - ./.env:/app/.env:ro
   db:
     image: postgres:17-alpine
     restart: always
