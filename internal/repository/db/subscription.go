@@ -170,29 +170,89 @@ func (s *SubscriptionStorage) ListByUserID(ctx context.Context, userID uuid.UUID
 	return subscriptions, nil
 }
 
+// List возвращает список всех подписок (опционально с фильтром по user_id)
+func (s *SubscriptionStorage) List(ctx context.Context, userID *uuid.UUID) ([]models.Subscription, error) {
+	var query string
+	var rows pgx.Rows
+	var err error
+
+	if userID != nil {
+		query = `
+			SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+			FROM subscriptions
+			WHERE user_id = $1
+			ORDER BY created_at DESC
+		`
+		rows, err = s.db.Query(ctx, query, *userID)
+	} else {
+		query = `
+			SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+			FROM subscriptions
+			ORDER BY created_at DESC
+		`
+		rows, err = s.db.Query(ctx, query)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var subscriptions []models.Subscription
+	for rows.Next() {
+		var sub models.Subscription
+		err := rows.Scan(
+			&sub.ID,
+			&sub.ServiceName,
+			&sub.Price,
+			&sub.UserID,
+			&sub.StartDate,
+			&sub.EndDate,
+			&sub.CreatedAt,
+			&sub.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan subscription: %w", err)
+		}
+		subscriptions = append(subscriptions, sub)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return subscriptions, nil
+}
+
 // GetTotalCost считает сумму стоимсоти подписок за период
 // Параметр serviceName опциональный
-func (s *SubscriptionStorage) GetTotalCost(ctx context.Context, userID uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error) {
+func (r *SubscriptionStorage) GetTotalCost(ctx context.Context, userID uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error) {
 	query := `
-		SELECT COALESCE(SUM(price), 0)
+		SELECT SUM(price) as total
 		FROM subscriptions
 		WHERE user_id = $1
-		AND start_date <= $2
-		AND (end_date IS NULL OR end_date >= $3)
+		  AND start_date <= $3
+		  AND (end_date IS NULL OR end_date >= $2)
 	`
 
-	args := []any{userID, endPeriod, startPeriod}
+	args := []any{userID, startPeriod, endPeriod}
+	argIdx := 4
 
 	if serviceName != "" {
-		query += ` AND service_name = $4`
+		query += fmt.Sprintf(" AND service_name = $%d", argIdx)
 		args = append(args, serviceName)
+		argIdx++
 	}
 
-	var total int
-	err := s.db.QueryRow(ctx, query, args...).Scan(&total)
+	var total *int
+	err := r.db.QueryRow(ctx, query, args...).Scan(&total)
 	if err != nil {
-		return 0, fmt.Errorf("failed to calculate total cost: %w", err)
+		return 0, fmt.Errorf("failed to get total cost: %w", err)
 	}
 
-	return total, nil
+	if total == nil {
+		return 0, ErrNoSubscriptionsFound
+	}
+
+	return *total, nil
 }
