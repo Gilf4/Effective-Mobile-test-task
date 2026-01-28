@@ -76,7 +76,7 @@ make run
 ## Доступ к API
 
 API документация (Swagger) доступна по адресу:
-`http://localhost:8080/swagger/index.html`
+`http://localhost:8080/swagger`
 
 ## Команда для работы с генерацией swagger документации
 
