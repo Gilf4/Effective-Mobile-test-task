@@ -37,7 +37,7 @@ docker compose up
 
 Swagger документация по адрессу: `http://localhost:8080/swagger`
 
-## Способ 2: Локальная разработка
+## Локально
 
 ### 1. Установка goose
 
