@@ -227,7 +227,6 @@ func (s *SubscriptionStorage) List(ctx context.Context, userID *uuid.UUID) ([]mo
 
 // GetTotalCost считает сумму стоимости подписок за период
 // Параметр serviceName опциональный
-// Вариант A: бессрочные подписки (без end_date) учитываются полностью, если активны в запрошенном периоде
 func (r *SubscriptionStorage) GetTotalCost(ctx context.Context, userID uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error) {
 	query := `
 		SELECT SUM(price) as total
