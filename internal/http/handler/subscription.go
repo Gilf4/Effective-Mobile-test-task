@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	apperrors "github.com/Gilf4/effective-mobile-task/internal/errors"
 	"github.com/Gilf4/effective-mobile-task/internal/models"
@@ -15,11 +16,10 @@ import (
 
 type SubscriptionService interface {
 	CreateSubscription(ctx context.Context, req models.CreateSubscriptionRequest) (*models.SubscriptionResponse, error)
-	GetSubscription(ctx context.Context, id uuid.UUID) (*models.SubscriptionResponse, error)
 	UpdateSubscription(ctx context.Context, id uuid.UUID, req models.UpdateSubscriptionRequest) (*models.SubscriptionResponse, error)
 	DeleteSubscription(ctx context.Context, id uuid.UUID) error
-	ListSubscriptions(ctx context.Context, userID *uuid.UUID) ([]models.SubscriptionResponse, error)
-	CalculateTotal(ctx context.Context, userID uuid.UUID, serviceName string, startStr, endStr string) (int, error)
+	ListSubscriptions(ctx context.Context, req models.ListSubscriptionsRequest) (*models.PaginatedSubscriptionResponse, error)
+	CalculateTotal(ctx context.Context, userID *uuid.UUID, serviceName string, startStr, endStr string) (int, error)
 }
 
 type Handler struct {
@@ -50,7 +50,6 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /subscriptions", h.CreateSubscription)
 	mux.HandleFunc("GET /subscriptions", h.ListSubscriptions)
-	mux.HandleFunc("GET /subscriptions/{id}", h.GetSubscription)
 	mux.HandleFunc("PUT /subscriptions/{id}", h.UpdateSubscription)
 	mux.HandleFunc("DELETE /subscriptions/{id}", h.DeleteSubscription)
 	mux.HandleFunc("GET /subscriptions/total", h.GetTotalCost)
@@ -89,35 +88,6 @@ func (h *Handler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(sub)
-}
-
-// @Summary Получить подписку по ID
-// @Tags subscriptions
-// @Produce json
-// @Param id path string true "Subscription ID"
-// @Success 200 {object} models.SubscriptionResponse
-// @Failure 400 {string} string "Invalid ID format"
-// @Failure 404 {string} string "Subscription not found"
-// @Failure 500 {string} string "Internal server error"
-// @Router /subscriptions/{id} [get]
-func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		h.handleError(w, apperrors.NewBadRequest("invalid id format", err))
-		return
-	}
-
-	h.log.Info("getting subscription", slog.String("id", id.String()))
-
-	sub, err := h.service.GetSubscription(r.Context(), id)
-	if err != nil {
-		h.handleError(w, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sub)
 }
 
@@ -187,15 +157,21 @@ func (h *Handler) DeleteSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary Получить список подписок
+// @Description Получение списка подписок с пагинацией. При указании user_id возвращаются подписки конкретного пользователя, иначе все подписки.
 // @Tags subscriptions
 // @Produce json
 // @Param user_id query string false "User UUID (optional - returns all if not provided)"
-// @Success 200 {array} models.SubscriptionResponse
+// @Param limit query integer false "Limit (default: 10, max: 100)"
+// @Param offset query integer false "Offset (default: 0)"
+// @Success 200 {object} models.PaginatedSubscriptionResponse
 // @Failure 400 {string} string "Invalid parameters"
 // @Failure 500 {string} string "Internal server error"
 // @Router /subscriptions [get]
 func (h *Handler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
-	var userID *uuid.UUID
+	ctx := r.Context()
+
+	req := models.ListSubscriptionsRequest{}
+
 	userIDStr := r.URL.Query().Get("user_id")
 
 	if userIDStr != "" {
@@ -204,12 +180,36 @@ func (h *Handler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 			h.handleError(w, apperrors.NewBadRequest("invalid user_id format", err))
 			return
 		}
-		userID = &parsedID
+		req.UserID = &parsedID
 	}
 
-	h.log.Info("listing subscriptions", slog.String("user_id", userIDStr))
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			h.handleError(w, apperrors.NewBadRequest("limit must be an integer", err))
+			return
+		}
+		req.Limit = limit
+	}
 
-	subs, err := h.service.ListSubscriptions(r.Context(), userID)
+	offsetStr := r.URL.Query().Get("offset")
+	if offsetStr != "" {
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			h.handleError(w, apperrors.NewBadRequest("offset must be an integer", err))
+			return
+		}
+		req.Offset = offset
+	}
+
+	h.log.Info("listing subscriptions",
+		slog.String("user_id", r.URL.Query().Get("user_id")),
+		slog.Int("limit", req.Limit),
+		slog.Int("offset", req.Offset),
+	)
+
+	subs, err := h.service.ListSubscriptions(ctx, req)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -227,7 +227,7 @@ func (h *Handler) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 // @Description - Бессрочная подписка всегда учитывается полной стоимостью, независимо от длины запрошенного периода
 // @Tags subscriptions
 // @Produce json
-// @Param user_id query string true "User UUID"
+// @Param user_id query string false "User UUID (optional - calculates total for all users if not provided)"
 // @Param start_date query string true "Format: MM-YYYY"
 // @Param end_date query string true "Format: MM-YYYY"
 // @Param service_name query string false "Service Name filter (optional)"
@@ -242,10 +242,14 @@ func (h *Handler) GetTotalCost(w http.ResponseWriter, r *http.Request) {
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		h.handleError(w, apperrors.NewBadRequest("invalid user_id format", err))
-		return
+	var userID *uuid.UUID
+	if userIDStr != "" {
+		parsedID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			h.handleError(w, apperrors.NewBadRequest("invalid user_id format", err))
+			return
+		}
+		userID = &parsedID
 	}
 
 	if startDate == "" || endDate == "" {
@@ -254,7 +258,7 @@ func (h *Handler) GetTotalCost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.log.Info("calculating total cost",
-		slog.String("user_id", userID.String()),
+		slog.String("user_id", userIDStr),
 		slog.String("service_name", serviceName),
 		slog.String("start_date", startDate),
 		slog.String("end_date", endDate),

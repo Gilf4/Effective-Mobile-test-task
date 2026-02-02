@@ -13,6 +13,21 @@ definitions:
       user_id:
         type: string
     type: object
+  models.PaginatedSubscriptionResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.SubscriptionResponse'
+        type: array
+      has_more:
+        type: boolean
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
   models.SubscriptionResponse:
     properties:
       end_date:
@@ -55,20 +70,28 @@ info:
 paths:
   /subscriptions:
     get:
+      description: Получение списка подписок с пагинацией. При указании user_id возвращаются
+        подписки конкретного пользователя, иначе все подписки.
       parameters:
       - description: User UUID (optional - returns all if not provided)
         in: query
         name: user_id
         type: string
+      - description: 'Limit (default: 10, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Offset (default: 0)'
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/models.SubscriptionResponse'
-            type: array
+            $ref: '#/definitions/models.PaginatedSubscriptionResponse'
         "400":
           description: Invalid parameters
           schema:
@@ -136,35 +159,6 @@ paths:
       summary: Удалить подписку
       tags:
       - subscriptions
-    get:
-      parameters:
-      - description: Subscription ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.SubscriptionResponse'
-        "400":
-          description: Invalid ID format
-          schema:
-            type: string
-        "404":
-          description: Subscription not found
-          schema:
-            type: string
-        "500":
-          description: Internal server error
-          schema:
-            type: string
-      summary: Получить подписку по ID
-      tags:
-      - subscriptions
     put:
       consumes:
       - application/json
@@ -213,10 +207,9 @@ paths:
         - Подписка без `end_date` (бессрочная) учитывается полностью, если её `start_date <= end_period`<br>
         - Бессрочная подписка всегда учитывается полной стоимостью, независимо от длины запрошенного периода
       parameters:
-      - description: User UUID
+      - description: User UUID (optional - calculates total for all users if not provided)
         in: query
         name: user_id
-        required: true
         type: string
       - description: 'Format: MM-YYYY'
         in: query

@@ -17,6 +17,7 @@ const docTemplate = `{
     "paths": {
         "/subscriptions": {
             "get": {
+                "description": "Получение списка подписок с пагинацией. При указании user_id возвращаются подписки конкретного пользователя, иначе все подписки.",
                 "produces": [
                     "application/json"
                 ],
@@ -30,16 +31,25 @@ const docTemplate = `{
                         "description": "User UUID (optional - returns all if not provided)",
                         "name": "user_id",
                         "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit (default: 10, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset (default: 0)",
+                        "name": "offset",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.SubscriptionResponse"
-                            }
+                            "$ref": "#/definitions/models.PaginatedSubscriptionResponse"
                         }
                     },
                     "400": {
@@ -114,10 +124,9 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User UUID",
+                        "description": "User UUID (optional - calculates total for all users if not provided)",
                         "name": "user_id",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     },
                     {
                         "type": "string",
@@ -169,50 +178,6 @@ const docTemplate = `{
             }
         },
         "/subscriptions/{id}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "subscriptions"
-                ],
-                "summary": "Получить подписку по ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Subscription ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.SubscriptionResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid ID format",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "404": {
-                        "description": "Subscription not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            },
             "put": {
                 "description": "Обновление данных подписки. Все поля опциональные. При обновлении ` + "`" + `end_date` + "`" + ` проверяется, что ` + "`" + `end_date \u003e= start_date` + "`" + `.",
                 "consumes": [
@@ -328,6 +293,29 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "models.PaginatedSubscriptionResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SubscriptionResponse"
+                    }
+                },
+                "has_more": {
+                    "type": "boolean"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

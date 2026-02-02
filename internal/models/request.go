@@ -53,3 +53,28 @@ func (r UpdateSubscriptionRequest) Validate() error {
 	}
 	return nil
 }
+
+type ListSubscriptionsRequest struct {
+	UserID *uuid.UUID
+	Limit  int
+	Offset int
+}
+
+func (r ListSubscriptionsRequest) Validate() error {
+	if r.Limit <= 0 {
+		return errors.New("limit must be greater than 0")
+	}
+	if r.Limit > 100 {
+		return errors.New("limit cannot exceed 100")
+	}
+	if r.Offset < 0 {
+		return errors.New("offset cannot be negative")
+	}
+	return nil
+}
+
+func (r *ListSubscriptionsRequest) SetDefaults() {
+	if r.Limit == 0 {
+		r.Limit = 20
+	}
+}

@@ -15,8 +15,8 @@ type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Subscription, error)
 	Update(ctx context.Context, sub *models.Subscription) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, userID *uuid.UUID) ([]models.Subscription, error)
-	GetTotalCost(ctx context.Context, userID uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error)
+	List(ctx context.Context, req models.ListSubscriptionsRequest) ([]models.Subscription, int64, error)
+	GetTotalCost(ctx context.Context, userID *uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error)
 }
 
 type SubscriptionService struct {
@@ -113,8 +113,14 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id uuid.UU
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID *uuid.UUID) ([]models.SubscriptionResponse, error) {
-	subscriptions, err := s.repo.List(ctx, userID)
+func (s *SubscriptionService) ListSubscriptions(ctx context.Context, req models.ListSubscriptionsRequest) (*models.PaginatedSubscriptionResponse, error) {
+	if err := req.Validate(); err != nil {
+		return nil, apperrors.NewBadRequest(err.Error(), err)
+	}
+
+	req.SetDefaults()
+
+	subscriptions, total, err := s.repo.List(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
 	}
@@ -124,10 +130,19 @@ func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID *uui
 		responses[i] = *models.NewSubscriptionResponse(&sub)
 	}
 
-	return responses, nil
+	response := &models.PaginatedSubscriptionResponse{
+		Data:   responses,
+		Total:  total,
+		Limit:  req.Limit,
+		Offset: req.Offset,
+	}
+
+	response.CalculateHasMore()
+
+	return response, nil
 }
 
-func (s *SubscriptionService) CalculateTotal(ctx context.Context, userID uuid.UUID, serviceName string, startStr, endStr string) (int, error) {
+func (s *SubscriptionService) CalculateTotal(ctx context.Context, userID *uuid.UUID, serviceName string, startStr, endStr string) (int, error) {
 	start, err := parseDate(startStr)
 	if err != nil {
 		return 0, apperrors.NewBadRequest("invalid start_date format", err)

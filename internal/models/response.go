@@ -31,3 +31,15 @@ func NewSubscriptionResponse(sub *Subscription) *SubscriptionResponse {
 		UpdatedAt:   sub.UpdatedAt,
 	}
 }
+
+type PaginatedSubscriptionResponse struct {
+	Data    []SubscriptionResponse `json:"data"`
+	Total   int64                  `json:"total"`
+	Limit   int                    `json:"limit"`
+	Offset  int                    `json:"offset"`
+	HasMore bool                   `json:"has_more"`
+}
+
+func (p *PaginatedSubscriptionResponse) CalculateHasMore() {
+	p.HasMore = int64(p.Offset+len(p.Data)) < p.Total
+}

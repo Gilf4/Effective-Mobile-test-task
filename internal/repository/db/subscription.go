@@ -130,18 +130,48 @@ func (s *SubscriptionStorage) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// ListByUserID возвращает список подписок пользователя
-func (s *SubscriptionStorage) ListByUserID(ctx context.Context, userID uuid.UUID) ([]models.Subscription, error) {
-	query := `
+func (s *SubscriptionStorage) List(ctx context.Context, req models.ListSubscriptionsRequest) ([]models.Subscription, int64, error) {
+	where := ""
+	args := []any{}
+	argNum := 1
+
+	if req.UserID != nil {
+		where = fmt.Sprintf("WHERE user_id = $%d", argNum)
+		args = append(args, *req.UserID)
+		argNum++
+	}
+
+	countQuery := "SELECT COUNT(*) FROM subscriptions " + where
+	var total int64
+	err := s.db.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, apperrors.NewInternal(err)
+	}
+
+	if total == 0 {
+		return []models.Subscription{}, 0, nil
+	}
+
+	selectArgs := make([]any, 0, len(args)+2)
+	selectArgs = append(selectArgs, args...)
+	selectArgs = append(selectArgs, req.Limit, req.Offset)
+
+	query := fmt.Sprintf(`
 		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
 		FROM subscriptions
-		WHERE user_id = $1
+		%s
 		ORDER BY created_at DESC
-	`
+		LIMIT $%d OFFSET $%d
+	`, where, argNum, argNum+1)
 
-	rows, err := s.db.Query(ctx, query, userID)
+	fmt.Printf("DEBUG SQL: %s\n", query)
+	fmt.Printf("DEBUG Args: %v\n", selectArgs)
+	fmt.Printf("DEBUG Count Query: %s\n", countQuery)
+	fmt.Printf("DEBUG Count Args: %v\n", args)
+
+	rows, err := s.db.Query(ctx, query, selectArgs...)
 	if err != nil {
-		return nil, apperrors.NewInternal(err)
+		return nil, 0, apperrors.NewInternal(err)
 	}
 	defer rows.Close()
 
@@ -159,88 +189,39 @@ func (s *SubscriptionStorage) ListByUserID(ctx context.Context, userID uuid.UUID
 			&sub.UpdatedAt,
 		)
 		if err != nil {
-			return nil, apperrors.NewInternal(err)
+			return nil, 0, apperrors.NewInternal(err)
 		}
 		subscriptions = append(subscriptions, sub)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, apperrors.NewInternal(err)
+		return nil, 0, apperrors.NewInternal(err)
 	}
 
-	return subscriptions, nil
-}
-
-// List возвращает список всех подписок (опционально с фильтром по user_id)
-func (s *SubscriptionStorage) List(ctx context.Context, userID *uuid.UUID) ([]models.Subscription, error) {
-	var query string
-	var rows pgx.Rows
-	var err error
-
-	if userID != nil {
-		query = `
-			SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-			FROM subscriptions
-			WHERE user_id = $1
-			ORDER BY created_at DESC
-		`
-		rows, err = s.db.Query(ctx, query, *userID)
-	} else {
-		query = `
-			SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-			FROM subscriptions
-			ORDER BY created_at DESC
-		`
-		rows, err = s.db.Query(ctx, query)
-	}
-
-	if err != nil {
-		return nil, apperrors.NewInternal(err)
-	}
-	defer rows.Close()
-
-	var subscriptions []models.Subscription
-	for rows.Next() {
-		var sub models.Subscription
-		err := rows.Scan(
-			&sub.ID,
-			&sub.ServiceName,
-			&sub.Price,
-			&sub.UserID,
-			&sub.StartDate,
-			&sub.EndDate,
-			&sub.CreatedAt,
-			&sub.UpdatedAt,
-		)
-		if err != nil {
-			return nil, apperrors.NewInternal(err)
-		}
-		subscriptions = append(subscriptions, sub)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, apperrors.NewInternal(err)
-	}
-
-	return subscriptions, nil
+	return subscriptions, total, nil
 }
 
 // GetTotalCost считает сумму стоимости подписок за период
-// Параметр serviceName опциональный
-func (r *SubscriptionStorage) GetTotalCost(ctx context.Context, userID uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error) {
+// Параметры userID и serviceName опциональные
+func (r *SubscriptionStorage) GetTotalCost(ctx context.Context, userID *uuid.UUID, serviceName string, startPeriod, endPeriod time.Time) (int, error) {
 	query := `
 		SELECT SUM(price) as total
 		FROM subscriptions
-		WHERE user_id = $1
-		  AND start_date <= $3
+		WHERE start_date <= $1
 		  AND (
-		    end_date IS NULL 
+		    end_date IS NULL
 		    OR end_date >= $2
 		  )
 	`
 
-	args := []any{userID, startPeriod, endPeriod}
-	argIdx := 4
+	args := []any{endPeriod, startPeriod}
+	argIdx := 3
+
+	if userID != nil {
+		query += fmt.Sprintf(" AND user_id = $%d", argIdx)
+		args = append(args, *userID)
+		argIdx++
+	}
 
 	if serviceName != "" {
 		query += fmt.Sprintf(" AND service_name = $%d", argIdx)
