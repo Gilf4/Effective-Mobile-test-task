@@ -164,11 +164,6 @@ func (s *SubscriptionStorage) List(ctx context.Context, req models.ListSubscript
 		LIMIT $%d OFFSET $%d
 	`, where, argNum, argNum+1)
 
-	fmt.Printf("DEBUG SQL: %s\n", query)
-	fmt.Printf("DEBUG Args: %v\n", selectArgs)
-	fmt.Printf("DEBUG Count Query: %s\n", countQuery)
-	fmt.Printf("DEBUG Count Args: %v\n", args)
-
 	rows, err := s.db.Query(ctx, query, selectArgs...)
 	if err != nil {
 		return nil, 0, apperrors.NewInternal(err)
