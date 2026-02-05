@@ -28,6 +28,7 @@ func NewSubscriptionRepository(ctx context.Context, dbCfg *config.DBConfig) (*Su
 	}
 
 	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, err
 	}
 
@@ -141,36 +142,28 @@ func (s *SubscriptionStorage) List(ctx context.Context, req models.ListSubscript
 		argNum++
 	}
 
-	countQuery := "SELECT COUNT(*) FROM subscriptions " + where
-	var total int64
-	err := s.db.QueryRow(ctx, countQuery, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, apperrors.NewInternal(err)
-	}
-
-	if total == 0 {
-		return []models.Subscription{}, 0, nil
-	}
-
-	selectArgs := make([]any, 0, len(args)+2)
-	selectArgs = append(selectArgs, args...)
-	selectArgs = append(selectArgs, req.Limit, req.Offset)
-
 	query := fmt.Sprintf(`
-		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
+		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at,
+		       COUNT(*) OVER() AS total_count
 		FROM subscriptions
 		%s
 		ORDER BY created_at DESC
 		LIMIT $%d OFFSET $%d
 	`, where, argNum, argNum+1)
 
-	rows, err := s.db.Query(ctx, query, selectArgs...)
+	args = append(args, req.Limit, req.Offset)
+
+	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, 0, apperrors.NewInternal(err)
 	}
 	defer rows.Close()
 
-	var subscriptions []models.Subscription
+	var (
+		subscriptions []models.Subscription
+		total         int64
+	)
+
 	for rows.Next() {
 		var sub models.Subscription
 		err := rows.Scan(
@@ -182,6 +175,7 @@ func (s *SubscriptionStorage) List(ctx context.Context, req models.ListSubscript
 			&sub.EndDate,
 			&sub.CreatedAt,
 			&sub.UpdatedAt,
+			&total,
 		)
 		if err != nil {
 			return nil, 0, apperrors.NewInternal(err)
